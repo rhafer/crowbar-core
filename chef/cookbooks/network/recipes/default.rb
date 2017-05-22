@@ -209,6 +209,12 @@ sorted_networks.each do |network|
     ifs[bond.name]["addresses"] ||= Array.new
     ifs[bond.name]["slaves"] = Array.new
     base_ifs.each do |i|
+      # If the slave isn't already a member of this bond, it may be configured
+      # with an IP or DHCP, and we don't want wicked to re-apply it when the
+      # interface is brought back up.
+      unless bond.slaves.include? i
+        ::Kernel.system("wicked ifdown #{i.name}")
+      end
       bond.add_slave i
       ifs[bond.name]["slaves"] << i.name
       ifs[i.name]["slave"] = true
@@ -565,6 +571,12 @@ when "suse"
         nic: nic,
         pre_up_script: pre_up_script
       })
+    end
+    # Mark all changed interfaces as up, so wicked will keep them that way.
+    bash "wicked ifup #{nic.name}" do
+      code "wicked ifup #{nic.name}"
+      action :nothing
+      subscribes :run, "template[/etc/sysconfig/network/ifcfg-#{nic.name}]", :immediately
     end
     if ifs[nic.name]["gateway"]
       template "/etc/sysconfig/network/ifroute-#{nic.name}" do
